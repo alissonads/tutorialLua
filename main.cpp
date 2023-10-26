@@ -216,5 +216,181 @@ int main() {
         lua_close(L);
     }
 
+    {
+        struct Sprite {
+            int x;
+            int y;
+
+            void Move(int pX, int pY) {
+                x += pX;
+                y += pY;
+            }
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto CreateSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_newuserdata(L, sizeof(Sprite)); // criar um tipo criado pelo usuário
+            sprite->x = 0;
+            sprite->y = 0;
+            return 1;
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto MoveSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // recupera o dado criado pelo id
+            lua_Number velX = lua_tonumber(L, -2); // pega o parâmetro (pelo id) que será passado na chamada da função
+            lua_Number velY = lua_tonumber(L, -1); // pega o parâmetro (pelo id) que será passado na chamada da função
+            sprite->Move((int)velX, (int)velY);
+            return 0;
+        };
+
+        constexpr char* LUA_FILE = R"(
+        sprite = CreateSprite()
+        MoveSprite(sprite, 7, 12)
+        )";
+
+        lua_State* L = luaL_newstate();
+        lua_pushcfunction(L, CreateSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setglobal(L, "CreateSprite");
+        lua_pushcfunction(L, MoveSprite);// Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setglobal(L, "MoveSprite");
+        luaL_dostring(L, LUA_FILE); // inicializa o programa
+        lua_getglobal(L, "sprite");
+        if (lua_isuserdata(L, -1)) {
+            printf("We got a sprite from lua\n");
+            Sprite* sprite = (Sprite*)lua_touserdata(L, -1);
+            printf("Sprite x: %d, y: %d\n", sprite->x, sprite->y);
+        }
+        else {
+            printf("We didnt got a sprite from lua\n");
+        }
+
+        lua_close(L);
+    }
+
+    // Tables
+    printf("------- Tables ------------------ \n");
+    {
+        constexpr char *LUA_FILE = R"(
+        x = {
+            luan = "admin",
+            marcelo = "user"
+        }
+        )";
+
+        lua_State * L = luaL_newstate();
+        luaL_dostring(L, LUA_FILE);
+
+        // aponta para a variável global x (tabela)
+        lua_getglobal(L, "x"); // 1 => -2
+        // adiciona luan a pilha de acesso
+        lua_pushstring(L, "luan"); // 2 => -1
+        // seleciona o penultimo elemento da pilha (no caso a chave luan)
+        lua_gettable(L, -2);
+        assert(lua_isstring(L, -1));
+        // converte o ultimo elemnto da pilha para string
+        const char* luanIs = lua_tostring(L, -1);
+        printf("Luan is %s\n", luanIs);
+
+        // aponta para a variável global x (tabela)
+        lua_getglobal(L, "x"); // 1 => -2
+        // adiciona na pilha o ultimo valor de marcelo (que é a chave na tabela)
+        lua_getfield(L, -1, "marcelo"); // 2 => -1
+        // converte o ultimo valor da pilha em string (nesse caso o valor da chave marcelo user)
+        const char* marceloIs = lua_tostring(L, -1);
+        printf("Marcelo is %s\n", marceloIs);
+
+        // aponta para a variável global x (tabela)
+        lua_getglobal(L, "x"); // 1 => -2
+        // adiciona a string editor na pilha
+        lua_pushstring(L, "editor"); // 2 => -1
+        // cria a chave jhon e adiciona o penultimo elemento da pilha "edito" como valor
+        // essa função seria semelhante a x["jhon"] = "editor"
+        lua_setfield(L, -2, "jhon");
+
+        // aponta para a variável global x (tabela)
+        lua_getglobal(L, "x"); // 1
+        // adiciona na pilha o ultimo valor de jhon (que é a chave na tabela)
+        lua_getfield(L, -1, "jhon"); // 2
+        // converte o ultimo valor da pilha em string (nesse caso o valor da chave jhon user)
+        const char* jhonIs = lua_tostring(L, -1);
+        printf("Jhon is %s\n", jhonIs);
+
+        lua_close(L);
+    }
+
+    printf("------- Metatables and Metamethods ------------------ \n");
+    {
+        struct Vec {
+            static int CreateVector(lua_State* L) {
+                lua_newtable(L); // 1 => -3
+                lua_pushstring(L, "x"); // 2 => -2
+                lua_pushnumber(L, 0); // 3 => -1
+                lua_settable(L, -3);
+
+                lua_pushstring(L, "y"); // 2 => -2
+                lua_pushnumber(L, 0); // 3 => -1
+                lua_settable(L, -3);
+
+                luaL_getmetatable(L, "VectorMetaTable");
+                lua_setmetatable(L, -2);
+
+                return 1;
+            }
+
+            static int add(lua_State* L) {
+                assert(lua_istable(L, -2)); // left table
+                assert(lua_istable(L, -1)); // right table
+
+                lua_pushstring(L, "x");
+                lua_gettable(L, -3);
+                lua_Number xLeft = lua_tonumber(L, -1);
+                lua_pop(L, 1);
+
+                lua_pushstring(L, "x");
+                lua_gettable(L, -2);
+                lua_Number xRight = lua_tonumber(L, -1);
+                lua_pop(L, 1);
+
+                lua_Number xAdded = xLeft + xRight;
+                printf("xAdded = %d\n", (int)xAdded);
+
+                Vec::CreateVector(L);
+
+                lua_pushstring(L, "x");
+                lua_pushnumber(L, xAdded);
+                lua_rawset(L, -3);
+
+                return 1;
+            }
+        };
+
+        constexpr char* LUA_FILE = R"(
+        v1 = CreateVector() -- v1 é uma tabela
+        v2 = CreateVector() -- v2 é uma tabela
+        v1.x = 5
+        v2.x = 15
+        v3 = v1 + v2
+        result = v3.x
+        )";
+        lua_State* L = luaL_newstate();
+        lua_pushcfunction(L, Vec::CreateVector);
+        lua_setglobal(L, "CreateVector");
+        luaL_newmetatable(L, "VectorMetaTable");
+        lua_pushstring(L, "__add");
+        lua_pushcfunction(L, Vec::add);
+        lua_settable(L, -3);
+
+        auto x = luaL_dostring(L, LUA_FILE);
+        if (x != LUA_OK)
+            printf("Error %s\n", lua_tostring(L, -1));
+
+        lua_getglobal(L, "result");
+        lua_Number result = lua_tonumber(L, -1);
+        printf("Result = %d\n", (int)result);
+
+        lua_close(L);
+    }
+
     return 0;
 }
