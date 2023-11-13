@@ -1,5 +1,6 @@
 #include <iostream>
 #include <lua5.4/lua.hpp>
+#include <new>
 
 //int main() {
 //    lua_State *L = luaL_newstate();
@@ -389,6 +390,717 @@ int main() {
         lua_Number result = lua_tonumber(L, -1);
         printf("Result = %d\n", (int)result);
 
+        lua_close(L);
+    }
+
+    printf("------- Constructor and Destructor ------------------ \n");
+    {
+        static int numberOfSpriteExisting = 0;
+
+        struct Sprite {
+            int x;
+            int y;
+
+            Sprite() : x(0), y(0) {
+                numberOfSpriteExisting++;
+            }
+
+            ~Sprite() {
+                numberOfSpriteExisting--;
+            }
+
+            void Move(int pX, int pY) {
+                x += pX;
+                y += pY;
+            }
+
+            void Draw() {
+                printf("Sprite(%p): x = %d, y = %d\n", this, x, y);
+            }
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto CreateSprite = [](lua_State* L) -> int {
+            void* sprite = lua_newuserdata(L, sizeof(Sprite)); // criar um tipo criado pelo usuário
+            new (sprite) Sprite(); // 1 => -2
+            luaL_getmetatable(L, "SpriteMetaTable"); // 2 => -1
+            assert(lua_istable(L, -1));
+            lua_setmetatable(L, -2);
+            return 1;
+        };
+
+        auto DestroySprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->~Sprite();
+            return 0;
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto MoveSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // recupera o dado criado pelo id
+            lua_Number velX = lua_tonumber(L, -2); // pega o parâmetro (pelo id) que será passado na chamada da função
+            lua_Number velY = lua_tonumber(L, -1); // pega o parâmetro (pelo id) que será passado na chamada da função
+            sprite->Move((int)velX, (int)velY);
+            return 0;
+        };
+
+        auto DrawSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->Draw();
+            return 0;
+        };
+
+        constexpr char* LUA_FILE = R"(
+        sprite = CreateSprite()
+        MoveSprite(sprite, 7, 12)
+        DrawSprite(sprite)
+        MoveSprite(sprite, 20, 7)
+        DrawSprite(sprite)
+
+        sprite2 = CreateSprite()
+        MoveSprite(sprite2, 45, 80)
+        DrawSprite(sprite2)
+        )";
+
+        lua_State* L = luaL_newstate();
+
+        luaL_newmetatable(L, "SpriteMetaTable"); // 1 => -3
+        lua_pushstring(L, "__gc"); // 2 => -2
+        lua_pushcfunction(L, DestroySprite); // 3 => -1
+        lua_settable(L, -3);
+
+        lua_pushcfunction(L, CreateSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setglobal(L, "CreateSprite");
+        lua_pushcfunction(L, MoveSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setglobal(L, "MoveSprite");
+        lua_pushcfunction(L, DrawSprite);
+        lua_setglobal(L, "DrawSprite");
+
+        luaL_dostring(L, LUA_FILE); // inicializa o programa
+        lua_getglobal(L, "sprite");
+        if (lua_isuserdata(L, -1)) {
+            printf("We got a sprite from lua\n");
+            Sprite* sprite = (Sprite*)lua_touserdata(L, -1);
+            printf("Sprite x: %d, y: %d\n", sprite->x, sprite->y);
+        }
+        else {
+            printf("We didnt got a sprite from lua\n");
+        }
+
+        lua_close(L);
+
+        assert(numberOfSpriteExisting == 0);
+    }
+
+    printf("-------------- Object Oriented Access ------------------ \n");
+    {
+        static int numberOfSpriteExisting = 0;
+
+        struct Sprite {
+            int x;
+            int y;
+
+            Sprite() : x(0), y(0) {
+                numberOfSpriteExisting++;
+            }
+
+            ~Sprite() {
+                numberOfSpriteExisting--;
+            }
+
+            void Move(int pX, int pY) {
+                x += pX;
+                y += pY;
+            }
+
+            void Draw() {
+                printf("Sprite(%p): x = %d, y = %d\n", this, x, y);
+            }
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto CreateSprite = [](lua_State* L) -> int {
+            void* sprite = lua_newuserdata(L, sizeof(Sprite)); // criar um tipo criado pelo usuário
+            new (sprite) Sprite(); // 1 => -2
+            luaL_getmetatable(L, "SpriteMetaTable"); // 2 => -1
+            assert(lua_istable(L, -1));
+            lua_setmetatable(L, -2);
+            return 1;
+        };
+
+        auto DestroySprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->~Sprite();
+            return 0;
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto MoveSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // recupera o dado criado pelo id
+            lua_Number velX = lua_tonumber(L, -2); // pega o parâmetro (pelo id) que será passado na chamada da função
+            lua_Number velY = lua_tonumber(L, -1); // pega o parâmetro (pelo id) que será passado na chamada da função
+            sprite->Move((int)velX, (int)velY);
+            return 0;
+        };
+
+        auto DrawSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->Draw();
+            return 0;
+        };
+
+        constexpr char* LUA_FILE = R"(
+        sprite = Sprite.new()
+        sprite:Move(7, 12) -- Sprite.Move(sprite, 7, 12)
+        sprite:Draw()
+        sprite:Move(20, 7)
+        sprite:Draw()
+
+        sprite2 = Sprite.new()
+        sprite2:Move(45, 80)
+        sprite2:Draw()
+
+        -- sprite  -> sprite is a userdata
+        --      has a metatable called SpriteMetaTable
+        --          don't have Move(), use the __index metamethod
+        --          __index metamethod is a table which is Sprite
+        --          Sprite has a field called Move(), invoke that
+        --          Move() is a c function
+        --          invoke, pass the userdatum as the first parameter
+        )";
+
+        lua_State* L = luaL_newstate();
+
+        lua_newtable(L);
+        int spriteTableIdx = lua_gettop(L);
+        lua_pushvalue(L, spriteTableIdx);
+        lua_setglobal(L, "Sprite");
+
+        lua_pushcfunction(L, CreateSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "new");
+        lua_pushcfunction(L, MoveSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "Move");
+        lua_pushcfunction(L, DrawSprite);
+        lua_setfield(L, -2, "Draw");
+
+        luaL_newmetatable(L, "SpriteMetaTable"); // 1 => -3
+        lua_pushstring(L, "__gc"); // 2 => -2
+        lua_pushcfunction(L, DestroySprite); // 3 => -1
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "__index");
+        lua_pushvalue(L, spriteTableIdx);
+        lua_settable(L, -3);
+
+        luaL_dostring(L, LUA_FILE); // inicializa o programa
+        lua_getglobal(L, "sprite");
+        if (lua_isuserdata(L, -1)) {
+            printf("We got a sprite from lua\n");
+            Sprite* sprite = (Sprite*)lua_touserdata(L, -1);
+            printf("Sprite x: %d, y: %d\n", sprite->x, sprite->y);
+        }
+        else {
+            printf("We didnt got a sprite from lua\n");
+        }
+
+        lua_close(L);
+
+        assert(numberOfSpriteExisting == 0);
+    }
+
+    printf("-------------- Reading Object Properties ------------------ \n");
+    {
+        static int numberOfSpriteExisting = 0;
+
+        struct Sprite {
+            int x;
+            int y;
+
+            Sprite() : x(0), y(0) {
+                numberOfSpriteExisting++;
+            }
+
+            ~Sprite() {
+                numberOfSpriteExisting--;
+            }
+
+            void Move(int pX, int pY) {
+                x += pX;
+                y += pY;
+            }
+
+            void Draw() {
+                printf("Sprite(%p): x = %d, y = %d\n", this, x, y);
+            }
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto CreateSprite = [](lua_State* L) -> int {
+            void* sprite = lua_newuserdata(L, sizeof(Sprite)); // criar um tipo criado pelo usuário
+            new (sprite) Sprite(); // 1 => -2
+            luaL_getmetatable(L, "SpriteMetaTable"); // 2 => -1
+            assert(lua_istable(L, -1));
+            lua_setmetatable(L, -2);
+            return 1;
+        };
+
+        auto DestroySprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->~Sprite();
+            return 0;
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto MoveSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // recupera o dado criado pelo id
+            lua_Number velX = lua_tonumber(L, -2); // pega o parâmetro (pelo id) que será passado na chamada da função
+            lua_Number velY = lua_tonumber(L, -1); // pega o parâmetro (pelo id) que será passado na chamada da função
+            sprite->Move((int)velX, (int)velY);
+            return 0;
+        };
+
+        auto DrawSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->Draw();
+            return 0;
+        };
+
+        auto SpriteIndex = [](lua_State* L) -> int {
+            assert(lua_isuserdata(L, -2));
+            assert(lua_isstring(L, -1));
+
+            auto sprite = (Sprite*)lua_touserdata(L, -2); // criar um tipo criado pelo usuário
+            const char* index = lua_tostring(L, -1);
+            if (strcmp(index, "x") == 0) {
+                lua_pushnumber(L, sprite->x);
+            }
+            else if (strcmp(index, "y") == 0) {
+                lua_pushnumber(L, sprite->y);
+            }
+            else {
+                lua_getglobal(L, "Sprite");
+                lua_pushstring(L, index);
+                lua_rawget(L, -2);
+            }
+
+            return 1;
+        };
+
+        constexpr char* LUA_FILE = R"(
+        sprite = Sprite.new()
+        sprite:Move(7, 12) -- Sprite.Move(sprite, 7, 12)
+        sprite:Draw()
+
+        temp_x = sprite.x
+        )";
+
+        lua_State* L = luaL_newstate();
+
+        lua_newtable(L);
+        int spriteTableIdx = lua_gettop(L);
+        lua_pushvalue(L, spriteTableIdx);
+        lua_setglobal(L, "Sprite");
+
+        lua_pushcfunction(L, CreateSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "new");
+        lua_pushcfunction(L, MoveSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "Move");
+        lua_pushcfunction(L, DrawSprite);
+        lua_setfield(L, -2, "Draw");
+
+        luaL_newmetatable(L, "SpriteMetaTable"); // 1 => -3
+        lua_pushstring(L, "__gc"); // 2 => -2
+        lua_pushcfunction(L, DestroySprite); // 3 => -1
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "__index");
+//        lua_pushvalue(L, spriteTableIdx);
+        lua_pushcfunction(L, SpriteIndex);
+        lua_settable(L, -3);
+
+        int result = luaL_dostring(L, LUA_FILE); // inicializa o programa
+        if (result != LUA_OK) {
+            printf("Error %s\n", lua_tostring(L, -1));
+        }
+
+        lua_getglobal(L, "temp_x");
+        lua_Number temp_x = lua_tonumber(L, -1);
+        assert(temp_x == 7);
+
+        lua_close(L);
+
+        assert(numberOfSpriteExisting == 0);
+    }
+
+    printf("-------------- Writing Object Properties ------------------ \n");
+    {
+        static int numberOfSpriteExisting = 0;
+
+        struct Sprite {
+            int x;
+            int y;
+
+            Sprite() : x(0), y(0) {
+                numberOfSpriteExisting++;
+            }
+
+            ~Sprite() {
+                numberOfSpriteExisting--;
+            }
+
+            void Move(int pX, int pY) {
+                x += pX;
+                y += pY;
+            }
+
+            void Draw() {
+                printf("Sprite(%p): x = %d, y = %d\n", this, x, y);
+            }
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto CreateSprite = [](lua_State* L) -> int {
+            void* sprite = lua_newuserdata(L, sizeof(Sprite)); // criar um tipo criado pelo usuário
+            new (sprite) Sprite(); // 1 => -2
+            luaL_getmetatable(L, "SpriteMetaTable"); // 2 => -1
+            assert(lua_istable(L, -1));
+            lua_setmetatable(L, -2);
+            return 1;
+        };
+
+        auto DestroySprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->~Sprite();
+            return 0;
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto MoveSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // recupera o dado criado pelo id
+            lua_Number velX = lua_tonumber(L, -2); // pega o parâmetro (pelo id) que será passado na chamada da função
+            lua_Number velY = lua_tonumber(L, -1); // pega o parâmetro (pelo id) que será passado na chamada da função
+            sprite->Move((int)velX, (int)velY);
+            return 0;
+        };
+
+        auto DrawSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->Draw();
+            return 0;
+        };
+
+        auto SpriteIndex = [](lua_State* L) -> int {
+            assert(lua_isuserdata(L, -2));
+            assert(lua_isstring(L, -1));
+
+            auto sprite = (Sprite*)lua_touserdata(L, -2); // criar um tipo criado pelo usuário
+            const char* index = lua_tostring(L, -1);
+            if (strcmp(index, "x") == 0) {
+                lua_pushnumber(L, sprite->x);
+            }
+            else if (strcmp(index, "y") == 0) {
+                lua_pushnumber(L, sprite->y);
+            }
+            else {
+                lua_getglobal(L, "Sprite");
+                lua_pushstring(L, index);
+                lua_rawget(L, -2);
+            }
+
+            return 1;
+        };
+
+        auto SpriteNewIndex = [](lua_State* L) -> int {
+            assert(lua_isuserdata(L, -3));
+            assert(lua_isstring(L, -2));
+            // -1 - value we want to set
+
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // criar um tipo criado pelo usuário
+            const char* index = lua_tostring(L, -2);
+            if (strcmp(index, "x") == 0) {
+                sprite->x = (int)lua_tonumber(L, -1);
+            }
+            else if (strcmp(index, "y") == 0) {
+                sprite->y = (int)lua_tonumber(L, -1);
+            }
+            else {
+                assert(false); // dont't want you to write to my native object
+            }
+
+            return 0;
+        };
+
+        constexpr char* LUA_FILE = R"(
+        sprite = Sprite.new()
+        sprite:Move(7, 12) -- Sprite.Move(sprite, 7, 12)
+        sprite:Draw()
+        sprite.y = 23
+        sprite:Draw()
+        sprite.y = sprite.x
+        sprite:Draw()
+        temp_x = sprite.x
+        )";
+
+        lua_State* L = luaL_newstate();
+
+        lua_newtable(L);
+        int spriteTableIdx = lua_gettop(L);
+        lua_pushvalue(L, spriteTableIdx);
+        lua_setglobal(L, "Sprite");
+
+        lua_pushcfunction(L, CreateSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "new");
+        lua_pushcfunction(L, MoveSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "Move");
+        lua_pushcfunction(L, DrawSprite);
+        lua_setfield(L, -2, "Draw");
+
+        luaL_newmetatable(L, "SpriteMetaTable"); // 1 => -3
+        lua_pushstring(L, "__gc"); // 2 => -2
+        lua_pushcfunction(L, DestroySprite); // 3 => -1
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "__index");
+        lua_pushcfunction(L, SpriteIndex);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "__newindex");
+        lua_pushcfunction(L, SpriteNewIndex);
+        lua_settable(L, -3);
+
+        int result = luaL_dostring(L, LUA_FILE); // inicializa o programa
+        if (result != LUA_OK) {
+            printf("Error %s\n", lua_tostring(L, -1));
+        }
+
+        lua_getglobal(L, "temp_x");
+        lua_Number temp_x = lua_tonumber(L, -1);
+        assert(temp_x == 7);
+
+        lua_close(L);
+
+        assert(numberOfSpriteExisting == 0);
+    }
+
+    printf("-------------- User values ------------------ \n");
+    {
+        static int numberOfSpriteExisting = 0;
+
+        struct Sprite {
+            int x;
+            int y;
+
+            Sprite() : x(0), y(0) {
+                numberOfSpriteExisting++;
+            }
+
+            ~Sprite() {
+                numberOfSpriteExisting--;
+            }
+
+            void Move(int pX, int pY) {
+                x += pX;
+                y += pY;
+            }
+
+            void Draw() {
+                printf("Sprite(%p): x = %d, y = %d\n", this, x, y);
+            }
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto CreateSprite = [](lua_State* L) -> int {
+            void* sprite = lua_newuserdata(L, sizeof(Sprite)); // criar um tipo criado pelo usuário
+            new (sprite) Sprite(); // 1 => -2
+            luaL_getmetatable(L, "SpriteMetaTable"); // 2 => -1
+            assert(lua_istable(L, -1));
+            lua_setmetatable(L, -2);
+
+            lua_newtable(L);
+            lua_setuservalue(L, 1);
+
+            return 1;
+        };
+
+        auto DestroySprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->~Sprite();
+            return 0;
+        };
+
+        // Callback que será chamado no contexto do lua
+        auto MoveSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // recupera o dado criado pelo id
+            lua_Number velX = lua_tonumber(L, -2); // pega o parâmetro (pelo id) que será passado na chamada da função
+            lua_Number velY = lua_tonumber(L, -1); // pega o parâmetro (pelo id) que será passado na chamada da função
+            sprite->Move((int)velX, (int)velY);
+            return 0;
+        };
+
+        auto DrawSprite = [](lua_State* L) -> int {
+            auto sprite = (Sprite*)lua_touserdata(L, -1); // criar um tipo criado pelo usuário
+            sprite->Draw();
+            return 0;
+        };
+
+        auto SpriteIndex = [](lua_State* L) -> int {
+            assert(lua_isuserdata(L, -2));
+            assert(lua_isstring(L, -1));
+
+            auto sprite = (Sprite*)lua_touserdata(L, -2); // criar um tipo criado pelo usuário
+            const char* index = lua_tostring(L, -1);
+            if (strcmp(index, "x") == 0) {
+                lua_pushnumber(L, sprite->x);
+            }
+            else if (strcmp(index, "y") == 0) {
+                lua_pushnumber(L, sprite->y);
+            }
+            else {
+                lua_getuservalue(L, 1);
+                lua_pushvalue(L, 2);
+                lua_gettable(L, -2);
+                if (lua_isnil(L, -1)) {
+                    lua_getglobal(L, "Sprite");
+                    lua_pushstring(L, index);
+                    lua_rawget(L, -2);
+                }
+            }
+
+            return 1;
+        };
+
+        auto SpriteNewIndex = [](lua_State* L) -> int {
+            assert(lua_isuserdata(L, -3)); // 1
+            assert(lua_isstring(L, -2)); // 2
+            // -1 - value we want to set // 3
+
+            auto sprite = (Sprite*)lua_touserdata(L, -3); // criar um tipo criado pelo usuário
+            const char* index = lua_tostring(L, -2);
+            if (strcmp(index, "x") == 0) {
+                sprite->x = (int)lua_tonumber(L, -1);
+            }
+            else if (strcmp(index, "y") == 0) {
+                sprite->y = (int)lua_tonumber(L, -1);
+            }
+            else {
+                lua_getuservalue(L, 1); // 1
+                lua_pushvalue(L, 2); // 2
+                lua_pushvalue(L, 3); // 3
+                lua_settable(L, -3);
+            }
+
+            return 1;
+        };
+
+        constexpr char* LUA_FILE = R"(
+        sprite = Sprite.new()
+        sprite:Move(7, 12) -- Sprite.Move(sprite, 7, 12)
+        sprite:Draw()
+        sprite.y = 23
+        sprite:Draw()
+        sprite.y = sprite.x
+        sprite:Draw()
+        sprite.zzz = 99
+        sprite.x = sprite.zzz
+        sprite:Draw()
+        temp_x = sprite.x
+        )";
+
+        lua_State* L = luaL_newstate();
+
+        lua_newtable(L);
+        int spriteTableIdx = lua_gettop(L);
+        lua_pushvalue(L, spriteTableIdx);
+        lua_setglobal(L, "Sprite");
+
+        lua_pushcfunction(L, CreateSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "new");
+        lua_pushcfunction(L, MoveSprite); // Registra o callback antes da inicialização do programa lua (LUA_FILE)
+        lua_setfield(L, -2, "Move");
+        lua_pushcfunction(L, DrawSprite);
+        lua_setfield(L, -2, "Draw");
+
+        luaL_newmetatable(L, "SpriteMetaTable"); // 1 => -3
+        lua_pushstring(L, "__gc"); // 2 => -2
+        lua_pushcfunction(L, DestroySprite); // 3 => -1
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "__index");
+        lua_pushcfunction(L, SpriteIndex);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "__newindex");
+        lua_pushcfunction(L, SpriteNewIndex);
+        lua_settable(L, -3);
+
+        int result = luaL_dostring(L, LUA_FILE); // inicializa o programa
+        if (result != LUA_OK) {
+            printf("Error %s\n", lua_tostring(L, -1));
+        }
+
+        lua_getglobal(L, "temp_x");
+        lua_Number temp_x = lua_tonumber(L, -1);
+        assert(temp_x == 99);
+
+        lua_close(L);
+
+        assert(numberOfSpriteExisting == 0);
+    }
+
+    printf("-------------- Lua Arena Memory Allocation ------------------ \n");
+    {
+        struct ArenaAllocator {
+            void* begin;
+            void* end;
+            char* curr;
+
+            ArenaAllocator(void* pbegin, void* pend) :
+            begin(pbegin),
+            end(pend),
+            curr(static_cast<char*>(begin))
+            {
+            }
+
+            void* alloc(size_t size) {
+                printf("Allocated %d bytes\n", (int)size);
+                void* ptr = curr;
+                curr += size;
+                return ptr;
+            }
+
+            void deAlloc(void* /*ptr*/) {
+                printf("DeAllocated ?? bytes\n");
+                //free(ptr);
+            }
+
+            void* reAlloc(void* ptr, size_t oldSize, size_t nsize) {
+                void* newPtr = alloc(nsize);
+                memcpy(newPtr, ptr, oldSize);
+                deAlloc(ptr);
+
+                return newPtr;
+            }
+
+            static void* l_alloc(void* ud, void *ptr, size_t osize, size_t nsize) {
+                ArenaAllocator* pool = static_cast<ArenaAllocator*>(ud);
+
+                if (nsize == 0) {
+                    pool->deAlloc(ptr);
+                    return nullptr;
+                }
+
+                if (ptr == nullptr)
+                    return pool->alloc(nsize);
+
+                return pool->reAlloc(ptr, osize, nsize);
+            }
+        };
+
+        constexpr int POOL_SIZE = 1024 * 20;
+        char memory[POOL_SIZE];
+        ArenaAllocator pool(memory, &memory[POOL_SIZE-1]);
+        lua_State* L = lua_newstate(ArenaAllocator::l_alloc, &pool);
+        assert(L != nullptr);
         lua_close(L);
     }
 
